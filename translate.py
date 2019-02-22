@@ -9,22 +9,6 @@ from dataset import collate_fn, TranslationDataset
 from transformer.Translator import Translator
 from preprocess import read_instances_from_file, convert_instance_to_idx_seq
 
-def postprocess(hypotheses, idx2token):
-    '''Processes translation outputs.
-    hypotheses: list of encoded predictions
-    idx2token: dictionary
-
-    Returns
-    processed hypotheses
-    '''
-    _hypotheses = []
-    for h in hypotheses:
-        sent = "".join(idx2token[idx] for idx in h)
-        sent = sent.split("</s>")[0].strip()
-        sent = sent.replace("▁", " ") # remove bpe symbols
-        _hypotheses.append(sent.strip())
-    return _hypotheses
-
 
 def main():
     '''Main Function'''
@@ -62,7 +46,7 @@ def main():
     preprocess_data = torch.load(opt.vocab)
     preprocess_settings = preprocess_data['settings']
 
-    test_target_word_insts = read_instances_from_file(
+    refs = read_instances_from_file(
         opt.target,
         preprocess_settings.max_word_seq_len,
         preprocess_settings.keep_case)
@@ -78,40 +62,36 @@ def main():
         TranslationDataset(
             src_word2idx=preprocess_data['dict']['src'],
             tgt_word2idx=preprocess_data['dict']['tgt'],
-            src_insts=test_src_insts),
+            src_insts=test_src_insts,
+            ),
         num_workers=2,
         batch_size=opt.batch_size,
         collate_fn=collate_fn)
 
     translator = Translator(opt)
 
+
     preds = []
+    preds_text  = []
+
     for batch in tqdm(test_loader, mininterval=2, desc='  - (Test)', leave=False):
         all_hyp, all_scores = translator.translate_batch(*batch)
         for idx_seqs in all_hyp:
             for idx_seq in idx_seqs:
-                # preds = ' '.join([test_loader.dataset.tgt_idx2word[idx] for idx in idx_seq])
+                sent = ' '.join([test_loader.dataset.tgt_idx2word[idx] for idx in idx_seq])
+                sent = sent.split("</s>")[0].strip()
+                sent = sent.replace("▁", " ")
+                preds_text.append(sent.strip())
                 preds.append([test_loader.dataset.tgt_idx2word[idx] for idx in idx_seq])
+    with open(opt.output, 'w') as f:
+        f.write('\n'.join(preds_text))
 
     from evaluator import BLEUEvaluator
     scorer = BLEUEvaluator()
-    score = scorer.evaluate(test_target_word_insts[:len(preds)], preds)
+    length = min(len(preds), len(refs))
+    score = scorer.evaluate(refs[:length], preds[:length])
     print(score)
 
-
-
-    # hypotheses = postprocess(hypotheses, test_loader.dataset.tgt_idx2word)
-    # with open(opt.output, 'w') as f:
-    #     f.write("\n".join(hypotheses))
-
-    # import os
-
-    # get_bleu_score = "perl multi-bleu.perl {} < {} > {}".format('test.de', opt.output, "temp")
-    # os.system(get_bleu_score)
-    # bleu_score_report = open("temp", "r").read()
-    # score = re.findall("BLEU = ([^,]+)", bleu_score_report)[0]
-    # print("BLEU score is {}".format(score))
-    # print('[Info] Finished.')
 
 if __name__ == "__main__":
     main()
