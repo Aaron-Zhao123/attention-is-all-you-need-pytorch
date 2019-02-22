@@ -9,6 +9,23 @@ from dataset import collate_fn, TranslationDataset
 from transformer.Translator import Translator
 from preprocess import read_instances_from_file, convert_instance_to_idx_seq
 
+def postprocess(hypotheses, idx2token):
+    '''Processes translation outputs.
+    hypotheses: list of encoded predictions
+    idx2token: dictionary
+
+    Returns
+    processed hypotheses
+    '''
+    _hypotheses = []
+    for h in hypotheses:
+        sent = "".join(idx2token[idx] for idx in h)
+        sent = sent.split("</s>")[0].strip()
+        sent = sent.replace("▁", " ") # remove bpe symbols
+        _hypotheses.append(sent.strip())
+    return _hypotheses
+
+
 def main():
     '''Main Function'''
 
@@ -59,14 +76,22 @@ def main():
         collate_fn=collate_fn)
 
     translator = Translator(opt)
+    hypotheses = []
+    for batch in tqdm(test_loader, mininterval=2, desc='  - (Test)', leave=False):
+        all_hyp, all_scores = translator.translate_batch(*batch)
+        hypotheses.extend(all_hyp)
 
+    hypotheses = postprocess(hypotheses, test_loader.dataset.tgt_idx2word)
     with open(opt.output, 'w') as f:
-        for batch in tqdm(test_loader, mininterval=2, desc='  - (Test)', leave=False):
-            all_hyp, all_scores = translator.translate_batch(*batch)
-            for idx_seqs in all_hyp:
-                for idx_seq in idx_seqs:
-                    pred_line = ' '.join([test_loader.dataset.tgt_idx2word[idx] for idx in idx_seq])
-                    f.write(pred_line + '\n')
+        f.write("\n".join(hypotheses))
+
+    import os
+
+    get_bleu_score = "perl multi-bleu.perl {} < {} > {}".format('test.de', opt.output, "temp")
+    os.system(get_bleu_score)
+    bleu_score_report = open("temp", "r").read()
+    score = re.findall("BLEU = ([^,]+)", bleu_score_report)[0]
+    print("BLEU score is {}".format(score))
     print('[Info] Finished.')
 
 if __name__ == "__main__":
