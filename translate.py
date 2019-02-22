@@ -59,6 +59,12 @@ def main():
     # Prepare DataLoader
     preprocess_data = torch.load(opt.vocab)
     preprocess_settings = preprocess_data['settings']
+
+    test_target_word_insts = read_instances_from_file(
+        opt.target,
+        preprocess_settings.max_word_seq_len,
+        preprocess_settings.keep_case)
+
     test_src_word_insts = read_instances_from_file(
         opt.src,
         preprocess_settings.max_word_seq_len,
@@ -76,23 +82,35 @@ def main():
         collate_fn=collate_fn)
 
     translator = Translator(opt)
-    hypotheses = []
+
+    preds = []
     for batch in tqdm(test_loader, mininterval=2, desc='  - (Test)', leave=False):
         all_hyp, all_scores = translator.translate_batch(*batch)
-        hypotheses.extend(all_hyp)
+        for idx_seqs in all_hyp:
+            for idx_seq in idx_seqs:
+                # preds = ' '.join([test_loader.dataset.tgt_idx2word[idx] for idx in idx_seq])
+                preds.extend([test_loader.dataset.tgt_idx2word[idx] for idx in idx_seq])
+        break
 
-    hypotheses = postprocess(hypotheses, test_loader.dataset.tgt_idx2word)
-    with open(opt.output, 'w') as f:
-        f.write("\n".join(hypotheses))
+    from evaluator import BLEUEvaluator
+    scorer = BLEUEvaluator()
+    socre = BLEUEvaluator.evaluate(test_target_word_insts[:num(preds)], preds)
+    print(score)
 
-    import os
 
-    get_bleu_score = "perl multi-bleu.perl {} < {} > {}".format('test.de', opt.output, "temp")
-    os.system(get_bleu_score)
-    bleu_score_report = open("temp", "r").read()
-    score = re.findall("BLEU = ([^,]+)", bleu_score_report)[0]
-    print("BLEU score is {}".format(score))
-    print('[Info] Finished.')
+
+    # hypotheses = postprocess(hypotheses, test_loader.dataset.tgt_idx2word)
+    # with open(opt.output, 'w') as f:
+    #     f.write("\n".join(hypotheses))
+
+    # import os
+
+    # get_bleu_score = "perl multi-bleu.perl {} < {} > {}".format('test.de', opt.output, "temp")
+    # os.system(get_bleu_score)
+    # bleu_score_report = open("temp", "r").read()
+    # score = re.findall("BLEU = ([^,]+)", bleu_score_report)[0]
+    # print("BLEU score is {}".format(score))
+    # print('[Info] Finished.')
 
 if __name__ == "__main__":
     main()
