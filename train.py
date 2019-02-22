@@ -267,7 +267,7 @@ def main():
     if opt.prune:
         # NetworkWrapper
         prune_params = {'alpha': opt.prune_alpha}
-        pruner = Pruner(load_mask=opt.load_mask, prune_params=prune_params)
+        pruner = Pruner(device=device, load_mask=opt.load_mask, prune_params=prune_params)
 
         transformer = NetworkWrapper(
             opt.src_vocab_size,
@@ -283,7 +283,8 @@ def main():
             n_layers=opt.n_layers,
             n_head=opt.n_head,
             dropout=opt.dropout,
-            transformer=pruner).to(device)
+            transformer=pruner
+            ).to(device)
     else:
         transformer = Transformer(
             opt.src_vocab_size,

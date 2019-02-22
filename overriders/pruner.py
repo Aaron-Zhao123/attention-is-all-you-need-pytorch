@@ -14,18 +14,19 @@ class Pruner(object):
                 return True
         return False
 
-    def __init__(self, load_mask=None, save_mask='mask.pkl', prune_params={'alpha':0.5}):
+    def __init__(self, load_mask=None, device='cpu', save_mask='mask.pkl', prune_params={'alpha':0.5}):
         if load_mask is not None:
             self._load_masks(load_mask)
         self.prune_params = prune_params
         self.save_mask = save_mask
+        self.device = device
         super(Pruner).__init__()
 
     def get_mask(self, value, name):
         mask = self.masks.get(name+'.mask')
         if mask is None:
             mask = Parameter(torch.ones(value.shape), requires_grad=False)
-            self.masks[name+'.mask'] = value
+            self.masks[name + '.mask'] = value.to(self.device)
         return mask
 
     def update_masks(self, named_params):
@@ -34,7 +35,7 @@ class Pruner(object):
             if self._check_name(n):
                 existing_mask = self.get_mask(p, n)
                 mask = self._update_mask(p, existing_mask, params=self.prune_params)
-                self.masks[n + '.mask'] = mask
+                self.masks[n + '.mask'] = mask.to(self.device)
                 self.sparsities.append((n, int(torch.sum(mask)), mask.numel()))
         self._save_masks(fname=self.save_mask)
         print("Updated and saved masks.")
