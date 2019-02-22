@@ -32,6 +32,10 @@ def main():
                         decoded sentences""")
     parser.add_argument('-no_cuda', action='store_true')
 
+    parser.add_argument('-prune', action='store_true')
+    parser.add_argument('-prune_alpha', type=float, default=0.1)
+    parser.add_argument('-load_mask', type=str, default=None)
+
     opt = parser.parse_args()
     opt.cuda = not opt.no_cuda
 
