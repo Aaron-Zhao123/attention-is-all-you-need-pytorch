@@ -35,6 +35,8 @@ def main():
                         help='Path to model .pt file')
     parser.add_argument('-src', required=True,
                         help='Source sequence to decode (one line per sequence)')
+    parser.add_argument('-target', required=True,
+                        help='Target sequence to decode (one line per sequence)')
     parser.add_argument('-vocab', required=True,
                         help='Source sequence to decode (one line per sequence)')
     parser.add_argument('-output', default='pred.txt',
@@ -89,12 +91,11 @@ def main():
         for idx_seqs in all_hyp:
             for idx_seq in idx_seqs:
                 # preds = ' '.join([test_loader.dataset.tgt_idx2word[idx] for idx in idx_seq])
-                preds.extend([test_loader.dataset.tgt_idx2word[idx] for idx in idx_seq])
-        break
+                preds.append([test_loader.dataset.tgt_idx2word[idx] for idx in idx_seq])
 
     from evaluator import BLEUEvaluator
     scorer = BLEUEvaluator()
-    socre = BLEUEvaluator.evaluate(test_target_word_insts[:num(preds)], preds)
+    score = scorer.evaluate(test_target_word_insts[:len(preds)], preds)
     print(score)
 
 
