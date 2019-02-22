@@ -209,6 +209,8 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-data', required=True)
+    parser.add_argument('-model', required=False, default=None,
+        help='Path to model .pt file')
 
     parser.add_argument('-epoch', type=int, default=10)
     parser.add_argument('-batch_size', type=int, default=64)
@@ -261,6 +263,7 @@ def main():
 
     device = torch.device('cuda' if opt.cuda else 'cpu')
 
+
     if opt.prune:
         # NetworkWrapper
         prune_params = {'alpha': opt.prune_alpha}
@@ -296,6 +299,10 @@ def main():
             n_layers=opt.n_layers,
             n_head=opt.n_head,
             dropout=opt.dropout).to(device)
+
+    if opt.model is not None:
+        checkpoint = torch.load(opt.model)
+        transformer.load_state_dict(checkpoint['model'])
 
     optimizer = ScheduledOptim(
         optim.Adam(
