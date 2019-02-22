@@ -16,6 +16,21 @@ from dataset import TranslationDataset, paired_collate_fn
 from transformer.Models import Transformer
 from transformer.Optim import ScheduledOptim
 
+from overriders.pruner import Pruner
+from overriders.network_wrapper import NetworkWrapperBase
+
+
+class NetworkWrapper(Transformer, NetworkWrapperBase):
+    def __init__(self, *args, **kwargs):
+        self.transformer = kwargs.pop('transformer')
+        super(NetworkWrapper, self).__init__(*args, **kwargs)
+        self._override(update=True)
+
+    def forward(self, *args, **kwargs):
+        self._override(update=False)
+        return super(NetworkWrapper, self).forward(*args, **kwargs)
+
+
 def cal_performance(pred, gold, smoothing=False):
     ''' Apply label smoothing if needed '''
 
@@ -219,6 +234,11 @@ def main():
     parser.add_argument('-no_cuda', action='store_true')
     parser.add_argument('-label_smoothing', action='store_true')
 
+    parser.add_argument('-prune', action='store_true')
+    parser.add_argument('-prune_alpha', type=float, default=0.1)
+    parser.add_argument('-load_mask', type=str, default=None)
+
+
     opt = parser.parse_args()
     opt.cuda = not opt.no_cuda
     opt.d_word_vec = opt.d_model
@@ -240,20 +260,42 @@ def main():
     print(opt)
 
     device = torch.device('cuda' if opt.cuda else 'cpu')
-    transformer = Transformer(
-        opt.src_vocab_size,
-        opt.tgt_vocab_size,
-        opt.max_token_seq_len,
-        tgt_emb_prj_weight_sharing=opt.proj_share_weight,
-        emb_src_tgt_weight_sharing=opt.embs_share_weight,
-        d_k=opt.d_k,
-        d_v=opt.d_v,
-        d_model=opt.d_model,
-        d_word_vec=opt.d_word_vec,
-        d_inner=opt.d_inner_hid,
-        n_layers=opt.n_layers,
-        n_head=opt.n_head,
-        dropout=opt.dropout).to(device)
+
+    if opt.prune:
+        # NetworkWrapper
+        prune_params = {'alpha': opt.prune_alpha}
+        pruner = Pruner(load_mask=opt.load_mask, prune_params=prune_params)
+
+        transformer = NetworkWrapper(
+            opt.src_vocab_size,
+            opt.tgt_vocab_size,
+            opt.max_token_seq_len,
+            tgt_emb_prj_weight_sharing=opt.proj_share_weight,
+            emb_src_tgt_weight_sharing=opt.embs_share_weight,
+            d_k=opt.d_k,
+            d_v=opt.d_v,
+            d_model=opt.d_model,
+            d_word_vec=opt.d_word_vec,
+            d_inner=opt.d_inner_hid,
+            n_layers=opt.n_layers,
+            n_head=opt.n_head,
+            dropout=opt.dropout,
+            transformer=pruner).to(device)
+    else:
+        transformer = Transformer(
+            opt.src_vocab_size,
+            opt.tgt_vocab_size,
+            opt.max_token_seq_len,
+            tgt_emb_prj_weight_sharing=opt.proj_share_weight,
+            emb_src_tgt_weight_sharing=opt.embs_share_weight,
+            d_k=opt.d_k,
+            d_v=opt.d_v,
+            d_model=opt.d_model,
+            d_word_vec=opt.d_word_vec,
+            d_inner=opt.d_inner_hid,
+            n_layers=opt.n_layers,
+            n_head=opt.n_head,
+            dropout=opt.dropout).to(device)
 
     optimizer = ScheduledOptim(
         optim.Adam(

@@ -23,12 +23,15 @@ class ToyNet(torch.nn.Module):
     return y_pred
 
 
-class NetworkWrapper(NetworkWrapperBase):
+class NetworkWrapper(ToyNet, NetworkWrapperBase):
     def __init__(self, *args, **kwargs):
         self.transformer = kwargs.pop('transformer')
-        self.model = kwargs.pop('model')
         super(NetworkWrapper, self).__init__(*args, **kwargs)
-        # self._override(update=True)
+        self._override(update=True)
+
+    def forward(self, x):
+        self._override(update=False)
+        return super(NetworkWrapper, self).forward(x)
 
 
 # N is batch size; D_in is input dimension;
@@ -39,18 +42,24 @@ N, D_in, H, D_out = 64, 101, 102, 10
 x = torch.randn(N, D_in)
 y = torch.randn(N, D_out)
 
+pruner = Pruner()
 # Construct our model by instantiating the class defined above.
-model = ToyNet(D_in, H, D_out)
+model = NetworkWrapper(D_in, H, D_out, transformer=pruner)
+# model = ToyNet(D_in, H, D_out)
 # model_wrapper._override(model, update=False)
-override(model, Pruner(), update=True)
+# override(model, pruner, update=True)
 
-
+# for name, param in model.named_parameters():
+#         # if self._check_name(name):
+#         mask = pruner.get_mask(param.data, name)
+#         # mask = torch.zeros(param.data.shape)
+#         param.data = param.data.mul_(mask)
 
 # Construct our loss function and an Optimizer. The call to model.parameters()
 # in the SGD constructor will contain the learnable parameters of the two
 # nn.Linear modules which are members of the model.
 loss_fn = torch.nn.MSELoss(reduction='sum')
-optimizer = torch.optim.SGD(model.parameters(), lr=1e-4)
+optimizer = torch.optim.SGD(model.parameters(), lr=1e-2)
 data = model.linear1.weight
 print(torch.sum(data==0))
 
@@ -66,6 +75,7 @@ for t in range(100):
   loss.backward()
   optimizer.step()
 
+y_pred = model(x)
 plist = model.parameters()
 for module in model.modules():
   print(module)

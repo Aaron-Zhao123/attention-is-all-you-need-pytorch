@@ -6,10 +6,19 @@ from torch.nn import Parameter
 
 class Pruner(object):
     masks = {}
+    _variables = ['weight']
 
-    def __init__(object, load_mask=None):
+    def _check_name(self, name):
+        for v_partial in self._variables:
+            if v_partial in name:
+                return True
+        return False
+
+    def __init__(self, load_mask=None, save_mask='mask.pkl', prune_params={'alpha':0.5}):
         if load_mask is not None:
             self._load_masks(load_mask)
+        self.prune_params = prune_params
+        self.save_mask = save_mask
         super(Pruner).__init__()
 
     def get_mask(self, value, name):
@@ -17,43 +26,53 @@ class Pruner(object):
         if mask is None:
             mask = Parameter(torch.ones(value.shape), requires_grad=False)
             self.masks[name+'.mask'] = value
-            return mask
-        else:
-            return mask
+        return mask
 
-    def update_masks(self, named_params, prune_params={'alpha':0.5}):
+    def update_masks(self, named_params):
+        self.sparsities = []
         for n, p in named_params:
-            existing_mask = self.get_mask(p, n)
-            mask = self._update_mask(p, existing_mask, params=prune_params)
-            self.masks[n + '.mask'] = mask
+            if self._check_name(n):
+                existing_mask = self.get_mask(p, n)
+                mask = self._update_mask(p, existing_mask, params=self.prune_params)
+                self.masks[n + '.mask'] = mask
+                self.sparsities.append((n, int(torch.sum(mask)), mask.numel()))
+        self._save_masks(fname=self.save_mask)
+        print("Updated and saved masks.")
+        # print(self.sparsities)
+        self._total_density()
+
+    def _total_density(self):
+        ones = sum([xs[1] for xs in self.sparsities])
+        total = sum([xs[2] for xs in self.sparsities])
+        print("Total density {}/{} = {}".format(ones, total, ones/total))
+
 
     def _update_mask(self, value, existing_mask, params):
         # dns style update
-        # alpha = params.get('alpha')
-        # value = value.detach().numpy()
-        # existing_mask = existing_mask.detach().numpy()
-        # # threshold = np.percentile(value, alpha*100)
-        # # mask = torch.Tensor((value > threshold).astype(np.float))
-        # mean = np.mean(value)
-        # std = np.std(value)
-        # threshold = mean + alpha * std
-        # on_mask = np.abs(value) > (1.1 * threshold)
-        # off_mask = np.abs(value) > (0.9 * threshold)
-        # new_mask = np.logical_or(existing_mask, on_mask)
-        # new_mask = np.logical_and(new_mask, off_mask)
-        # mask = torch.Tensor((new_mask).astype(np.float))
-        # mask.requires_grad_(requires_grad=False)
-        mask = (value > 0.02).float()
+        alpha = params.get('alpha')
+        value = value.detach().numpy()
+        existing_mask = existing_mask.detach().numpy()
+        # threshold = np.percentile(value, alpha*100)
+        # mask = torch.Tensor((value > threshold).astype(np.float))
+        mean = np.mean(value)
+        std = np.std(value)
+        threshold = mean + alpha * std
+        on_mask = np.abs(value) > (1.1 * threshold)
+        off_mask = np.abs(value) > (0.9 * threshold)
+        new_mask = np.logical_or(existing_mask, on_mask)
+        new_mask = np.logical_and(new_mask, off_mask)
+        mask = torch.Tensor((new_mask).astype(np.float))
+        mask = Parameter(mask, requires_grad=False)
         return mask
-        # return Parameter(mask, requires_grad=False)
 
     def _load_masks(self, fname):
         with open(fname, 'rb') as f:
             self.masks = pickle.load(f)
+        print("Loaded mask from {}".format(fname))
 
-    def save_masks(self, fname):
+    def _save_masks(self, fname):
         with open(fname, 'wb') as f:
-            pickle.dump(fname, self.masks)
+            pickle.dump(self.masks, f)
 
 
 

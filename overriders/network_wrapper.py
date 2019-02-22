@@ -27,16 +27,15 @@ class NetworkWrapperBase(object):
                 return True
         return False
 
-    def _override(self, model, update=False):
+    def _override(self, update=False):
         if update:
-          self.transformer.update_masks(model.named_parameters())
+          self.transformer.update_masks(self.named_parameters())
         sparsities = []
-        for name, param in model.named_parameters():
+        for name, param in self.named_parameters():
             if self._check_name(name):
               mask = self.transformer.get_mask(param.data, name)
-              rsetattr(model, name + '.data', param.data.mul_(mask))
-              sparsities.append((name, int(torch.sum(mask)), mask.numel()))
-        print(sparsities)
+              rsetattr(self, name + '.data', param.data.mul_(mask))
+
 
 def override(model, transformer, update=False):
     if update:
@@ -46,7 +45,7 @@ def override(model, transformer, update=False):
         # if self._check_name(name):
         mask = transformer.get_mask(param.data, name)
         # mask = torch.zeros(param.data.shape)
-        #   param.data = param.data.mul_(mask)
-        rsetattr(model, name + '.data', param.data.mul_(mask))
+        param.data = param.data.mul_(mask)
+        # rsetattr(model, name + '.data', param.data.mul_(mask))
         sparsities.append((name, int(torch.sum(mask)), mask.numel()))
     print(sparsities)
